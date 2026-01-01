@@ -3,7 +3,7 @@ set -e
 
 # ================= CONFIG =================
 CANVAS=1000
-WHEEL_SIZE=800
+WHEEL_SIZE=1200
 PHOTO_SIZE=120
 MAX_USERS=20
 OUT="wheel.png"
