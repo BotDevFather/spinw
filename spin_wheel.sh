@@ -69,9 +69,9 @@ for ((i=0; i<COUNT; i++)); do
 
   convert -size ${WHEEL_SIZE}x${WHEEL_SIZE} xc:none \
     -stroke "$COLOR" \
--strokewidth $((R * 2)) \
--fill none \
--draw "arc $CX,$CY $((CX+R)),$((CY+R)) $START $END"\
+    -strokewidth $((R * 2)) \
+    -fill none \
+    -draw "arc $CX,$CY $((CX+R)),$((CY+R)) $START $END"\
     "$TMP/sector.png"
 
   composite "$TMP/sector.png" "$TMP/wheel.png" "$TMP/wheel.png"
