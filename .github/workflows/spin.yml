@@ -16,17 +16,46 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ffmpeg imagemagick jq curl bc
 
-      - name: Fetch Telegram avatars
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-        run: |
-          mkdir avatars
-          IDS='${{ toJson(github.event.client_payload.userIds) }}'
-          echo "$IDS" | jq -r '.[]' | while read id; do
-            FILE_ID=$(curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUserProfilePhotos?user_id=$id&limit=1" | jq -r '.result.photos[0][0].file_id')
-            FILE_PATH=$(curl -s "https://api.telegram.org/bot$BOT_TOKEN/getFile?file_id=$FILE_ID" | jq -r '.result.file_path')
-            curl -s "https://api.telegram.org/file/bot$BOT_TOKEN/$FILE_PATH" -o avatars/$id.jpg
-          done
+      - name: Fetch & normalize Telegram avatars
+  env:
+    BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+  run: |
+    mkdir -p avatars_raw avatars
+
+    IDS='${{ toJson(github.event.client_payload.userIds) }}'
+
+    echo "$IDS" | jq -r '.[]' | while read id; do
+      echo "Fetching avatar for $id"
+
+      RESP=$(curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUserProfilePhotos?user_id=$id&limit=1")
+      FILE_ID=$(echo "$RESP" | jq -r '.result.photos[0][-1].file_id // empty')
+
+      if [ -z "$FILE_ID" ]; then
+        echo "No avatar for $id"
+        continue
+      fi
+
+      FILE_PATH=$(curl -s "https://api.telegram.org/bot$BOT_TOKEN/getFile?file_id=$FILE_ID" | jq -r '.result.file_path // empty')
+
+      if [ -z "$FILE_PATH" ]; then
+        echo "Invalid file path for $id"
+        continue
+      fi
+
+      # Download raw file (may be jpg/webp)
+      curl -L --retry 3 --fail \
+        "https://api.telegram.org/file/bot$BOT_TOKEN/$FILE_PATH" \
+        -o avatars_raw/$id.raw || continue
+
+      # HARD normalize to PNG (this fixes EVERYTHING)
+      if convert avatars_raw/$id.raw avatars/$id.png 2>/dev/null; then
+        echo "Avatar OK for $id"
+      else
+        echo "Failed to convert avatar for $id"
+        rm -f avatars/$id.png
+      fi
+    done
+
 
       - name: Build wheel image
         run: bash scripts/build_wheel.sh
@@ -63,9 +92,3 @@ jobs:
         run: |
           CHAT_ID="${{ github.event.client_payload.chatid }}"
           curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendVideo" \
-            -F chat_id="$CHAT_ID" \
-            -F video=@output.mp4
-
-      - name: Cleanup
-        run: rm -rf avatars wheel.png output.mp4
-        
