@@ -28,7 +28,7 @@ if [ "$#" -gt "$MAX_USERS" ]; then
   exit 1
 fi
 
-for cmd in convert composite curl bc; do
+for cmd in convert composite curl; do
   command -v "$cmd" >/dev/null || exit 1
 done
 
@@ -39,7 +39,7 @@ CX=$((WHEEL_SIZE / 2))
 CY=$((WHEEL_SIZE / 2))
 R=$((WHEEL_SIZE / 2))
 PHOTO_R=$((WHEEL_SIZE * 38 / 100))
-ANGLE=$(echo "scale=2; 360 / $COUNT" | bc)
+ANGLE=$((360 / COUNT))
 
 echo "🚀 Creating spin wheel with $COUNT users..."
 
@@ -49,7 +49,7 @@ for url in "$@"; do
   i=$((i+1))
   echo "📸 Processing photo $i/$COUNT..."
   
-  # Download image with timeout and remove color profile
+  # Download image with timeout
   curl -L --silent --max-time 30 "$url" -o "$TMP/$i.jpg" || {
     echo "⚠️  Could not download photo $i, creating placeholder"
     # Create colored placeholder with number
@@ -63,7 +63,7 @@ for url in "$@"; do
       "$TMP/$i.jpg"
   }
 
-  # Convert to circular photo with border - REMOVE COLOR PROFILE
+  # Convert to circular photo with border
   convert "$TMP/$i.jpg" \
     -resize ${PHOTO_SIZE}x${PHOTO_SIZE}^ \
     -gravity center \
@@ -73,7 +73,7 @@ for url in "$@"; do
     -alpha off \
     -compose copy_opacity \
     -composite \
-    -strip \  # REMOVE COLOR PROFILE
+    -strip \
     -shave 1x1 \
     -bordercolor white \
     -border 4 \
@@ -88,21 +88,25 @@ echo "🎨 Creating wheel sectors..."
 # Create transparent base wheel
 convert -size ${WHEEL_SIZE}x${WHEEL_SIZE} xc:none "$TMP/wheel_base.png"
 
-# Create colored sectors using conic gradient approximation
+# Create colored sectors
 for ((i=0; i<COUNT; i++)); do
-  START=$(echo "scale=2; $i * $ANGLE" | bc)
-  END=$(echo "scale=2; ($i + 1) * $ANGLE" | bc)
+  START=$((i * ANGLE))
+  END=$(((i + 1) * ANGLE))
   COLOR=${COLORS[$((i % ${#COLORS[@]}))]}
   
   echo "  Sector $((i+1)): $START° to $END° ($COLOR)"
   
-  # Create sector mask (pie slice)
+  # Calculate sector endpoints using bc for floating point
+  END_RAD=$(echo "scale=10; $END * 3.1415926535 / 180" | bc)
+  END_X=$(echo "scale=0; $CX + $R * c($END_RAD)" | bc -l)
+  END_Y=$(echo "scale=0; $CY - $R * s($END_RAD)" | bc -l)
+  
+  # Create sector (pie slice)
   convert -size ${WHEEL_SIZE}x${WHEEL_SIZE} xc:none \
     -fill "$COLOR" \
     -draw "path 'M $CX,$CY \
            L $WHEEL_SIZE,$((CY)) \
-           A $R,$R 0 0,1 \
-           $(echo "scale=0; $CX + $R * c($END * 3.14159 / 180)" | bc -l | cut -d. -f1),$(echo "scale=0; $CY - $R * s($END * 3.14159 / 180)" | bc -l | cut -d. -f1) \
+           A $R,$R 0 0,1 ${END_X%.*},${END_Y%.*} \
            Z'" \
     "$TMP/sector_$i.png"
   
@@ -114,7 +118,7 @@ for ((i=0; i<COUNT; i++)); do
   fi
 done
 
-# Add inner center circle (to hide sector tips)
+# Add inner center circle
 convert "$TMP/wheel_colored.png" \
   -fill '#0a0a1a' \
   -draw "circle $CX,$CY $CX,$((CY - 60))" \
@@ -129,26 +133,30 @@ echo "📍 Placing photos on wheel..."
 
 for ((i=0; i<COUNT; i++)); do
   # Calculate photo position (middle of sector)
-  MID_ANGLE=$(echo "scale=2; ($i * $ANGLE) + ($ANGLE / 2)" | bc)
+  MID_ANGLE=$(( (i * ANGLE) + (ANGLE / 2) ))
   
   # Convert to radians
-  MID_RAD=$(echo "scale=10; ($MID_ANGLE - 90) * 3.14159265 / 180" | bc)
+  MID_RAD=$(echo "scale=10; ($MID_ANGLE - 90) * 3.1415926535 / 180" | bc)
   
   # Calculate X,Y position
-  X=$(echo "scale=0; $CX + $PHOTO_R * c($MID_RAD)" | bc -l | cut -d. -f1)
-  Y=$(echo "scale=0; $CY - $PHOTO_R * s($MID_RAD)" | bc -l | cut -d. -f1)
+  X=$(echo "scale=0; $CX + $PHOTO_R * c($MID_RAD)" | bc -l)
+  Y=$(echo "scale=0; $CY - $PHOTO_R * s($MID_RAD)" | bc -l)
   
   # Rotate photo to face outward (perpendicular to radius)
-  ROTATION=$(echo "scale=2; 90 - $MID_ANGLE" | bc)
+  ROTATION=$((90 - MID_ANGLE))
   
   convert "$TMP/p$((i+1)).png" \
     -background none \
     -rotate "$ROTATION" \
-    -strip \  # REMOVE COLOR PROFILE
+    -strip \
     "$TMP/r$i.png"
   
+  # Convert to integers
+  X_INT=${X%.*}
+  Y_INT=${Y%.*}
+  
   # Place photo on wheel
-  composite -geometry "+$((X - PHOTO_SIZE/2))+$((Y - PHOTO_SIZE/2))" \
+  composite -geometry "+$((X_INT - PHOTO_SIZE/2))+$((Y_INT - PHOTO_SIZE/2))" \
     "$TMP/r$i.png" "$TMP/wheel_colored.png" "$TMP/wheel_colored.png"
 done
 
@@ -184,7 +192,7 @@ WHEEL_Y=$(( (CANVAS - WHEEL_SIZE) / 2 ))
 composite -geometry "+${WHEEL_X}+${WHEEL_Y}" \
   "$TMP/wheel_colored.png" "$TMP/canvas.png" "$TMP/canvas.png"
 
-# Place pointer at top center (adjusting for wheel offset)
+# Place pointer at top center
 POINTER_X=$(( CANVAS / 2 - 50 ))
 POINTER_Y=$(( WHEEL_Y - 100 ))
 
@@ -208,7 +216,7 @@ convert "$TMP/canvas.png" \
   -border 20 \
   -bordercolor '#3a3a6a' \
   -border 5 \
-  -strip \  # REMOVE COLOR PROFILE FROM FINAL IMAGE
+  -strip \
   "$OUT"
 
 # ================= CLEANUP & OUTPUT =================
