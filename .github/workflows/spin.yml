@@ -17,6 +17,11 @@ jobs:
       # ----------------------------
       # Install dependencies
       # ----------------------------
+      - name: Inspect repository_dispatch payload
+        run: |
+          echo "===== FULL EVENT PAYLOAD ====="
+          echo '${{ toJson(github.event) }}' | jq .
+    
       - name: Install dependencies
         run: |
           sudo apt-get update
