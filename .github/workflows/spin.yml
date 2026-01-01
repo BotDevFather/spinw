@@ -35,15 +35,12 @@ jobs:
       # Generate spin wheel image
       # ----------------------------
       - name: Generate wheel
+        env:
+          WATERMARK: ${{ github.event.client_payload.watermark }}
         run: |
           chmod +x spin_wheel.sh
-
           USERS='${{ toJson(github.event.client_payload.users) }}'
           URLS=$(echo "$USERS" | jq -r '.[].photo_url' | tr '\n' ' ')
-
-          echo "Using URLs:"
-          echo "$URLS"
-
           ./spin_wheel.sh $URLS
 
       # ----------------------------
