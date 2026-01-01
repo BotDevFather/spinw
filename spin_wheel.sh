@@ -102,7 +102,8 @@ convert -size 100x120 xc:none \
 convert -size ${CANVAS}x${CANVAS} xc:white "$OUT"
 
 # center wheel
-composite -gravity center "$TMP/wheel.png" "$OUT" "$OUT"
+composite -gravity center -geometry +-100+400 "$TMP/wheel.png" "$OUT" "$OUT"
+
 
 # pointer on top
 composite -gravity north "$TMP/pointer.png" "$OUT" "$OUT"
