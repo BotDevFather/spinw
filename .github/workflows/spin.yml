@@ -1,4 +1,4 @@
-name: Spin Wheel Video
+name: Spin Wheel Generator
 
 on:
   repository_dispatch:
@@ -17,106 +17,39 @@ jobs:
       # ----------------------------
       # Install dependencies
       # ----------------------------
-      - name: Inspect repository_dispatch payload
-        run: |
-          echo "===== FULL EVENT PAYLOAD ====="
-          echo '${{ toJson(github.event) }}' | jq .
-    
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg imagemagick jq curl bc
+          sudo apt-get install -y imagemagick curl bc
 
       # ----------------------------
-      # Download avatars from YOUR API response
+      # Generate wheel image
       # ----------------------------
-      - name: Download user images
+      - name: Generate spin wheel
         run: |
-          set -e
-          mkdir -p avatars
+          chmod +x spin_wheel.sh
 
           USERS='${{ toJson(github.event.client_payload.users) }}'
 
-          COUNT=$(echo "$USERS" | jq length)
-          if [ "$COUNT" -lt 2 ]; then
-            echo "Need at least 2 users"
-            exit 1
-          fi
+          # Extract photo URLs into args
+          URLS=$(echo "$USERS" | jq -r '.[].photo_url' | tr '\n' ' ')
 
-          echo "$USERS" | jq -r '.[] | .photo_url' | nl -w1 -s':' | while read line; do
-            IDX=$(echo "$line" | cut -d: -f1)
-            URL=$(echo "$line" | cut -d: -f2-)
+          echo "Using URLs:"
+          echo "$URLS"
 
-            echo "Downloading $URL"
-            curl -L --fail "$URL" -o avatars/$IDX.jpg
-
-            # Validate image
-            identify avatars/$IDX.jpg >/dev/null 2>&1 || {
-              echo "Invalid image: $URL"
-              exit 1
-            }
-          done
+          ./spin_wheel.sh $URLS
 
       # ----------------------------
-      # Build wheel image
+      # Send image to Telegram
       # ----------------------------
-      - name: Build wheel image
-        run: bash scripts/build_wheel.sh
-
-      # ----------------------------
-      # Pick winner
-      # ----------------------------
-      - name: Pick winner
-        run: |
-          COUNT=$(ls avatars | wc -l)
-          WIN=$((RANDOM % COUNT))
-          echo "WINNER=$WIN" >> $GITHUB_ENV
-          echo "COUNT=$COUNT" >> $GITHUB_ENV
-
-          echo "Winner index: $WIN / $COUNT"
-
-      # ----------------------------
-      # Render spin video (slow + stop)
-      # ----------------------------
-      - name: Render spin video
-        run: |
-          DURATION=3
-          FULL_SPINS=4
-
-          SLICE_ANGLE=$(echo "360 / $COUNT" | bc -l)
-
-          # EXACT match with your UI logic
-          FINAL_ROTATION=$(echo "$FULL_SPINS*360 + (360 - ($WINNER*$SLICE_ANGLE) - ($SLICE_ANGLE/2))" | bc)
-
-          ffmpeg -y -loop 1 -i wheel.png \
-            -filter_complex "
-            rotate='(1 - pow(1 - t/$DURATION, 3)) * $FINAL_ROTATION * PI/180':c=none,
-            drawbox=x=530:y=20:w=20:h=60:color=red:t=fill
-            " \
-            -t $DURATION \
-            -r 30 \
-            -pix_fmt yuv420p \
-            output.mp4
-
-      # ----------------------------
-      # Send video to Telegram
-      # ----------------------------
-      - name: Send video to Telegram
+      - name: Send wheel to Telegram
         env:
           BOT_TOKEN: ${{ github.event.client_payload.botToken }}
+          CHAT_ID: ${{ github.event.client_payload.chatid }}
         run: |
-          CHAT_ID="${{ github.event.client_payload.chatid }}"
-          RAW_DATA="${{ github.event.client_payload }}"
-          echo "Sending video to chat $CHAT_ID $RAW_DATA"
+          echo "Sending wheel.png to chat $CHAT_ID"
 
-          curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendVideo" \
+          curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendPhoto" \
             -F chat_id="$CHAT_ID" \
-            -F video=@output.mp4
-
-      # ----------------------------
-      # Cleanup
-      # ----------------------------
-      - name: Cleanup
-        run: |
-          rm -rf avatars wheel.png output.mp4
-          
+            -F photo=@wheel.png \
+            -F caption="🎡 Spin Wheel Generated"
