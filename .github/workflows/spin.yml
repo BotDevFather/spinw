@@ -9,15 +9,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # -----------------------------
-      # CHECKOUT
-      # -----------------------------
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # -----------------------------
-      # INSTALL SYSTEM DEPENDENCIES
-      # -----------------------------
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -25,20 +19,10 @@ jobs:
             xvfb \
             ffmpeg \
             chromium-browser \
-            jq \
             curl
 
       # -----------------------------
-      # CREATE users.json (ARRAY ONLY)
-      # -----------------------------
-      - name: Create users.json
-        run: |
-          echo '${{ toJson(github.event.client_payload.users) }}' > users.json
-          echo "users.json created:"
-          cat users.json
-
-      # -----------------------------
-      # START VIRTUAL DISPLAY (FIXED)
+      # START DISPLAY
       # -----------------------------
       - name: Start Xvfb
         run: |
@@ -47,49 +31,47 @@ jobs:
           sleep 2
 
       # -----------------------------
-      # LAUNCH CHROMIUM WITH WATERMARK
+      # LAUNCH CHROMIUM WITH PAYLOAD
       # -----------------------------
-      - name: Launch Spin Wheel HTML
+      - name: Launch Spin Wheel
         run: |
           chromium-browser \
             --no-sandbox \
             --disable-gpu \
             --window-size=500,650 \
             --window-position=0,0 \
-            "file://$PWD/index.html?text=${{ github.event.client_payload.watermark }}" &
+            --disable-infobars \
+            --app="data:text/html,\
+            <script>\
+            window.__SPIN_PAYLOAD__ = { \
+              users: ${{ toJson(github.event.client_payload.users) }}, \
+              watermark: '${{ github.event.client_payload.watermark }}' \
+            };\
+            </script>\
+            $(cat index.html)" &
           sleep 4
 
       # -----------------------------
-      # RECORD USING FFMPEG (FIXED)
+      # RECORD VIDEO
       # -----------------------------
-      - name: Record spin video
+      - name: Record spin
         run: |
           ffmpeg -y \
             -video_size 500x650 \
             -framerate 30 \
             -f x11grab \
             -i :99.0+0,0 \
-            -t 5 \
+            -t 8 \
             -pix_fmt yuv420p \
             spin.mp4
 
       # -----------------------------
-      # SEND VIDEO TO TELEGRAM
+      # SEND TO TELEGRAM
       # -----------------------------
-      - name: Send video to Telegram
+      - name: Send to Telegram
         run: |
           curl -s -X POST \
             "https://api.telegram.org/bot${{ github.event.client_payload.botToken }}/sendVideo" \
             -F chat_id="${{ github.event.client_payload.chatId }}" \
             -F video=@spin.mp4 \
             -F caption="🎡 Spin Result"
-
-      # -----------------------------
-      # UPLOAD ARTIFACT (OPTIONAL)
-      # -----------------------------
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: spin-video
-          path: spin.mp4
-          
