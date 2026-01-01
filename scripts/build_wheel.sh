@@ -8,42 +8,37 @@ SIZE=1080
 CENTER=540
 RADIUS=500
 AVATAR_SIZE=160
-AVATAR_FRAME=180
+FRAME_SIZE=180
 BORDER=6
 
 # ------------------------
 # COLLECT AVATARS
 # ------------------------
-AVATARS=()
-for f in avatars/*; do
-  if identify "$f" >/dev/null 2>&1; then
-    AVATARS+=("$f")
-  else
-    echo "Skipping invalid image: $f"
-  fi
-done
+AVATARS=(avatars/*.jpg)
 
 COUNT=${#AVATARS[@]}
-
 if [ "$COUNT" -lt 2 ]; then
-  echo "Need at least 2 valid avatars, found $COUNT"
+  echo "Need at least 2 avatars, found $COUNT"
   exit 1
 fi
 
 SLICE_ANGLE=$(echo "360 / $COUNT" | bc -l)
 
 # ------------------------
-# CREATE BASE CANVAS
+# BASE CANVAS
 # ------------------------
 convert -size ${SIZE}x${SIZE} xc:none wheel.png
 
 ANGLE=0
+IDX=0
 
 # ------------------------
 # BUILD WHEEL
 # ------------------------
 for IMG in "${AVATARS[@]}"; do
-  # Random bright color
+  TMP_AVATAR="avatar_${IDX}.png"
+
+  # Random color per slice
   COLOR=$(printf "#%06X\n" $((RANDOM % 16777215)))
 
   # Draw slice
@@ -53,25 +48,30 @@ for IMG in "${AVATARS[@]}"; do
     -rotate "$ANGLE" \
     wheel.png
 
-  # Prepare avatar (circle + border)
+  # Prepare avatar (circle mask + border)
   convert "$IMG" \
     -resize ${AVATAR_SIZE}x${AVATAR_SIZE}^ \
     -gravity center \
     -extent ${AVATAR_SIZE}x${AVATAR_SIZE} \
-    \( -size ${AVATAR_SIZE}x${AVATAR_SIZE} xc:none -draw "circle $((AVATAR_SIZE/2)),$((AVATAR_SIZE/2)) $((AVATAR_SIZE/2)),$BORDER" \) \
+    \( -size ${AVATAR_SIZE}x${AVATAR_SIZE} xc:none \
+       -draw "circle $((AVATAR_SIZE/2)),$((AVATAR_SIZE/2)) $((AVATAR_SIZE/2)),$BORDER" \) \
     -compose DstIn -composite \
     -bordercolor white -border $BORDER \
-    miff:- |
+    "$TMP_AVATAR"
 
-  # Composite avatar into slice
+  # Composite avatar onto wheel (NO PIPE)
   convert wheel.png \
+    "$TMP_AVATAR" \
     -gravity center \
     -geometry +0-$((RADIUS / 2)) \
     -rotate "$ANGLE" \
     -composite \
     wheel.png
 
+  rm -f "$TMP_AVATAR"
+
   ANGLE=$(echo "$ANGLE + $SLICE_ANGLE" | bc)
+  IDX=$((IDX + 1))
 done
 
 echo "Wheel built successfully with $COUNT slices"
