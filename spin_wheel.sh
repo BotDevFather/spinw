@@ -63,7 +63,7 @@ done
 convert -size ${WHEEL_SIZE}x${WHEEL_SIZE} xc:none "$TMP/wheel.png"
 
 for ((i=0; i<COUNT; i++)); do
-  START=$(echo "$i * $ANGLE - 90" | bc -l)   # <<< FIX POINTER ORIENTATION
+  START=$(echo "$i * $ANGLE" | bc -l)   # <<< FIX POINTER ORIENTATION
   END=$(echo "$START + $ANGLE" | bc -l)
   COLOR=${COLORS[$((i % ${#COLORS[@]}))]}
 
@@ -108,7 +108,7 @@ composite -gravity center -geometry -380-360 "$TMP/wheel.png" "$OUT" "$OUT"
 
 
 # pointer on top
-composite -gravity south "$TMP/pointer.png" "$OUT" "$OUT"
+composite -gravity north "$TMP/pointer.png" "$OUT" "$OUT"
 
 # ================= WATERMARK =================
 if [ -n "$WATERMARK" ]; then
