@@ -1,38 +1,42 @@
 #!/bin/bash
+set -e
 
-SIZE=800
-RADIUS=380
-CENTER=$((SIZE / 2))
+SIZE=1080
+CENTER=540
+RADIUS=500
 
 COUNT=$(ls avatars | wc -l)
+if [ "$COUNT" -lt 2 ]; then
+  echo "Need at least 2 avatars"
+  exit 1
+fi
+
 SLICE_ANGLE=$(echo "360 / $COUNT" | bc -l)
 
+# Base transparent canvas
 convert -size ${SIZE}x${SIZE} xc:none wheel.png
 
-START=0
-i=0
+ANGLE=0
 
 for IMG in avatars/*.jpg; do
-  COLOR=$(printf "#%06X\n" $((RANDOM * RANDOM % 16777215)))
-
-  END=$(echo "$START + $SLICE_ANGLE" | bc)
+  # Random color per slice
+  COLOR=$(printf "#%06X\n" $((RANDOM % 16777215)))
 
   # Draw slice
   convert wheel.png \
     -fill "$COLOR" \
-    -draw "path 'M $CENTER,$CENTER L $CENTER,20 A $RADIUS,$RADIUS 0 0,1 $CENTER,$CENTER Z'" \
-    -rotate "$START" \
+    -draw "path 'M $CENTER,$CENTER L $CENTER,40 A $RADIUS,$RADIUS 0 0,1 $CENTER,$CENTER Z'" \
+    -rotate "$ANGLE" \
     wheel.png
 
-  # Place avatar
+  # Place avatar in slice center
   convert wheel.png \
-    \( "$IMG" -resize 140x140 -gravity center -extent 160x160 -bordercolor white -border 4 \) \
+    \( "$IMG" -resize 160x160 -gravity center -extent 180x180 -bordercolor white -border 6 \) \
     -gravity center \
     -geometry +0-$((RADIUS / 2)) \
-    -rotate "$START" \
+    -rotate "$ANGLE" \
     -composite \
     wheel.png
 
-  START=$END
-  i=$((i+1))
+  ANGLE=$(echo "$ANGLE + $SLICE_ANGLE" | bc)
 done
