@@ -9,27 +9,61 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      # ----------------------------
+      # Checkout repository
+      # ----------------------------
+      - name: Checkout repo
+        uses: actions/checkout@v4
 
+      # ----------------------------
+      # Install dependencies
+      # ----------------------------
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y imagemagick curl bc jq
 
+      # ----------------------------
+      # Debug payload (optional but safe)
+      # ----------------------------
+      - name: Inspect payload
+        run: |
+          echo "===== CLIENT PAYLOAD ====="
+          echo '${{ toJson(github.event.client_payload) }}' | jq .
+
+      # ----------------------------
+      # Generate spin wheel image
+      # ----------------------------
       - name: Generate wheel
         run: |
           chmod +x spin_wheel.sh
+
           USERS='${{ toJson(github.event.client_payload.users) }}'
           URLS=$(echo "$USERS" | jq -r '.[].photo_url' | tr '\n' ' ')
+
+          echo "Using URLs:"
+          echo "$URLS"
+
           ./spin_wheel.sh $URLS
 
-      - name: Send to Telegram
+      # ----------------------------
+      # Send output to Telegram
+      # ----------------------------
+      - name: Send wheel to Telegram
         env:
           BOT_TOKEN: ${{ github.event.client_payload.botToken }}
-          CHAT_ID:  ${{ github.event.client_payload.chatid }}
+          CHAT_ID: ${{ github.event.client_payload.chatid }}
         run: |
+          echo "Sending wheel.png to chat $CHAT_ID"
+
           curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendPhoto" \
             -F chat_id="$CHAT_ID" \
             -F photo=@wheel.png \
             -F caption="🎡 Spin Wheel Generated"
-            
+
+      # ----------------------------
+      # Cleanup (optional)
+      # ----------------------------
+      - name: Cleanup
+        run: |
+          rm -f wheel.png
