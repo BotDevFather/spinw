@@ -38,7 +38,7 @@ TMP=$(mktemp -d)
 CX=$((WHEEL_SIZE / 2))
 CY=$((WHEEL_SIZE / 2))
 R=$((WHEEL_SIZE / 2))
-PHOTO_R=$((WHEEL_SIZE * 38 / 100))  # Radius for photo placement
+PHOTO_R=$((WHEEL_SIZE * 38 / 100))
 ANGLE=$(echo "scale=2; 360 / $COUNT" | bc)
 
 echo "🚀 Creating spin wheel with $COUNT users..."
@@ -49,7 +49,7 @@ for url in "$@"; do
   i=$((i+1))
   echo "📸 Processing photo $i/$COUNT..."
   
-  # Download image with timeout
+  # Download image with timeout and remove color profile
   curl -L --silent --max-time 30 "$url" -o "$TMP/$i.jpg" || {
     echo "⚠️  Could not download photo $i, creating placeholder"
     # Create colored placeholder with number
@@ -63,7 +63,7 @@ for url in "$@"; do
       "$TMP/$i.jpg"
   }
 
-  # Convert to circular photo with border
+  # Convert to circular photo with border - REMOVE COLOR PROFILE
   convert "$TMP/$i.jpg" \
     -resize ${PHOTO_SIZE}x${PHOTO_SIZE}^ \
     -gravity center \
@@ -73,6 +73,7 @@ for url in "$@"; do
     -alpha off \
     -compose copy_opacity \
     -composite \
+    -strip \  # REMOVE COLOR PROFILE
     -shave 1x1 \
     -bordercolor white \
     -border 4 \
@@ -143,6 +144,7 @@ for ((i=0; i<COUNT; i++)); do
   convert "$TMP/p$((i+1)).png" \
     -background none \
     -rotate "$ROTATION" \
+    -strip \  # REMOVE COLOR PROFILE
     "$TMP/r$i.png"
   
   # Place photo on wheel
@@ -206,6 +208,7 @@ convert "$TMP/canvas.png" \
   -border 20 \
   -bordercolor '#3a3a6a' \
   -border 5 \
+  -strip \  # REMOVE COLOR PROFILE FROM FINAL IMAGE
   "$OUT"
 
 # ================= CLEANUP & OUTPUT =================
@@ -217,12 +220,4 @@ echo "   • Canvas size: ${CANVAS}x${CANVAS}"
 echo "   • Wheel size: ${WHEEL_SIZE}x${WHEEL_SIZE}"
 echo "   • Photo size: ${PHOTO_SIZE}x${PHOTO_SIZE}"
 echo "   • Sectors: $COUNT (${ANGLE}° each)"
-
-# Display image if possible
-if command -v feh &> /dev/null; then
-  feh "$OUT" &
-elif command -v eog &> /dev/null; then
-  eog "$OUT" &
-elif command -v open &> /dev/null; then
-  open "$OUT" &
-fi
+echo "   • Output file: $(pwd)/$OUT"
