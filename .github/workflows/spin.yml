@@ -1,4 +1,4 @@
-name: Spin Wheel
+name: Spin Wheel Video
 
 on:
   repository_dispatch:
@@ -9,58 +9,80 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ----------------------------
-      # Checkout repository
-      # ----------------------------
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # ----------------------------
-      # Install dependencies
-      # ----------------------------
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y imagemagick curl bc jq
+          sudo apt-get install -y \
+            xvfb \
+            ffmpeg \
+            chromium-browser \
+            jq \
+            curl
 
-      # ----------------------------
-      # Debug payload (optional but safe)
-      # ----------------------------
-      - name: Inspect payload
+      # ----------------------------------
+      # CREATE users.json (ARRAY ONLY)
+      # ----------------------------------
+      - name: Write users.json
         run: |
-          echo "===== CLIENT PAYLOAD ====="
-          echo '${{ toJson(github.event.client_payload) }}' | jq .
+          echo '${{ toJson(github.event.client_payload.users) }}' > users.json
+          cat users.json
 
-      # ----------------------------
-      # Generate spin wheel image
-      # ----------------------------
-      - name: Generate wheel
-        env:
-          WATERMARK: ${{ github.event.client_payload.watermark }}
+      # ----------------------------------
+      # START DISPLAY
+      # ----------------------------------
+      - name: Start Xvfb
         run: |
-          chmod +x spin_wheel.sh
-          USERS='${{ toJson(github.event.client_payload.users) }}'
-          URLS=$(echo "$USERS" | jq -r '.[].photo_url' | tr '\n' ' ')
-          ./spin_wheel.sh $URLS
+          Xvfb :99 -screen 0 500x500x24 &
+          echo "DISPLAY=:99" >> $GITHUB_ENV
+          sleep 2
 
-      # ----------------------------
-      # Send output to Telegram
-      # ----------------------------
-      - name: Send wheel to Telegram
-        env:
-          BOT_TOKEN: ${{ github.event.client_payload.botToken }}
-          CHAT_ID: ${{ github.event.client_payload.chatid }}
+      # ----------------------------------
+      # LAUNCH CHROMIUM WITH WATERMARK
+      # ----------------------------------
+      - name: Launch Spin Wheel
         run: |
-          echo "Sending wheel.png to chat $CHAT_ID"
+          chromium-browser \
+            --no-sandbox \
+            --disable-gpu \
+            --window-size=500,650 \
+            --window-position=0,0 \
+            "file://$PWD/your_html_file.html?text=${{ github.event.client_payload.watermark }}" &
+          sleep 4
 
-          curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendPhoto" \
-            -F chat_id="$CHAT_ID" \
-            -F photo=@wheel.png \
-            -F caption="🎡 Spin Wheel Generated"
-
-      # ----------------------------
-      # Cleanup (optional)
-      # ----------------------------
-      - name: Cleanup
+      # ----------------------------------
+      # RECORD VIDEO
+      # ----------------------------------
+      - name: Record Spin
         run: |
-          rm -f wheel.png
+          ffmpeg -y \
+            -video_size 500x650 \
+            -framerate 30 \
+            -f x11grab \
+            -i :99.0+0,0 \
+            -t 8 \
+            -pix_fmt yuv420p \
+            spin.mp4
+
+      # ----------------------------------
+      # SEND TO TELEGRAM
+      # ----------------------------------
+      - name: Send to Telegram
+        run: |
+          curl -s -X POST \
+            "https://api.telegram.org/bot${{ github.event.client_payload.botToken }}/sendVideo" \
+            -F chat_id="${{ github.event.client_payload.chatId }}" \
+            -F video=@spin.mp4 \
+            -F caption="🎡 Spin Result"
+
+      # ----------------------------------
+      # OPTIONAL ARTIFACT
+      # ----------------------------------
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: spin-video
+          path: spin.mp4
+          
