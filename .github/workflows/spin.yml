@@ -1,4 +1,4 @@
-name: Spin Wheel Video
+name: Spin Wheel Render & Send
 
 on:
   repository_dispatch:
@@ -9,9 +9,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # -----------------------------
+      # CHECKOUT
+      # -----------------------------
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      # -----------------------------
+      # INSTALL SYSTEM DEPENDENCIES
+      # -----------------------------
       - name: Install dependencies
         run: |
           sudo apt-get update
@@ -22,40 +28,41 @@ jobs:
             jq \
             curl
 
-      # ----------------------------------
+      # -----------------------------
       # CREATE users.json (ARRAY ONLY)
-      # ----------------------------------
-      - name: Write users.json
+      # -----------------------------
+      - name: Create users.json
         run: |
           echo '${{ toJson(github.event.client_payload.users) }}' > users.json
+          echo "users.json created:"
           cat users.json
 
-      # ----------------------------------
-      # START DISPLAY
-      # ----------------------------------
+      # -----------------------------
+      # START VIRTUAL DISPLAY (FIXED)
+      # -----------------------------
       - name: Start Xvfb
         run: |
-          Xvfb :99 -screen 0 500x500x24 &
+          Xvfb :99 -screen 0 500x650x24 &
           echo "DISPLAY=:99" >> $GITHUB_ENV
           sleep 2
 
-      # ----------------------------------
+      # -----------------------------
       # LAUNCH CHROMIUM WITH WATERMARK
-      # ----------------------------------
-      - name: Launch Spin Wheel
+      # -----------------------------
+      - name: Launch Spin Wheel HTML
         run: |
           chromium-browser \
             --no-sandbox \
             --disable-gpu \
             --window-size=500,650 \
             --window-position=0,0 \
-            "file://$PWD/your_html_file.html?text=${{ github.event.client_payload.watermark }}" &
+            "file://$PWD/index.html?text=${{ github.event.client_payload.watermark }}" &
           sleep 4
 
-      # ----------------------------------
-      # RECORD VIDEO
-      # ----------------------------------
-      - name: Record Spin
+      # -----------------------------
+      # RECORD USING FFMPEG (FIXED)
+      # -----------------------------
+      - name: Record spin video
         run: |
           ffmpeg -y \
             -video_size 500x650 \
@@ -66,10 +73,10 @@ jobs:
             -pix_fmt yuv420p \
             spin.mp4
 
-      # ----------------------------------
-      # SEND TO TELEGRAM
-      # ----------------------------------
-      - name: Send to Telegram
+      # -----------------------------
+      # SEND VIDEO TO TELEGRAM
+      # -----------------------------
+      - name: Send video to Telegram
         run: |
           curl -s -X POST \
             "https://api.telegram.org/bot${{ github.event.client_payload.botToken }}/sendVideo" \
@@ -77,9 +84,9 @@ jobs:
             -F video=@spin.mp4 \
             -F caption="🎡 Spin Result"
 
-      # ----------------------------------
-      # OPTIONAL ARTIFACT
-      # ----------------------------------
+      # -----------------------------
+      # UPLOAD ARTIFACT (OPTIONAL)
+      # -----------------------------
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
