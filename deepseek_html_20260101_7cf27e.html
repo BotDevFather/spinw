@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Spin Wheel</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background: #ffffff;
+            padding: 20px;
+            position: relative;
+        }
+
+        .wheel-container {
+            position: relative;
+            width: 500px;
+            height: 500px;
+            margin: 0 auto 20px;
+        }
+
+        .wheel {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 0 0 15px #f0f0f0, 0 0 40px rgba(0, 0, 0, 0.1);
+            transition: transform 2s cubic-bezier(0.17, 0.67, 0.21, 0.99);
+        }
+
+        .wheel-sector {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+        }
+
+        .sector-content {
+            position: absolute;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transform-origin: center;
+            width: 100%;
+            height: 100%;
+        }
+
+        .photo-container {
+            border-radius: 50%;
+            overflow: hidden;
+            border: 3px solid rgba(255, 255, 255, 0.9);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            background: #f5f5f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .photo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .pointer {
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 70px;
+            z-index: 10;
+            filter: drop-shadow(0 5px 8px rgba(0, 0, 0, 0.2));
+        }
+
+        .center-circle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80px;
+            height: 80px;
+            background: #ffffff;
+            border-radius: 50%;
+            z-index: 5;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+            border: 6px solid #e0e0e0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #333;
+            font-size: 2rem;
+        }
+
+        .controls {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            font-size: 1rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 120px;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn-primary {
+            background: linear-gradient(to right, #ff416c, #ff4b2b);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: linear-gradient(to right, #2193b0, #6dd5ed);
+            color: white;
+        }
+
+        .btn-refresh {
+            background: linear-gradient(to right, #00b09b, #96c93d);
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.15);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .result {
+            margin-top: 15px;
+            font-size: 1.2rem;
+            text-align: center;
+            min-height: 40px;
+            padding: 10px 30px;
+            background: #f8f8f8;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            max-width: 500px;
+            color: #333;
+            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        .sector-border {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            z-index: 2;
+            pointer-events: none;
+            background: transparent;
+            box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.05);
+        }
+
+        .winner-highlight {
+            animation: winnerGlow 1s infinite alternate;
+        }
+
+        /* Watermark Styles */
+        .watermark {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+            opacity: 0.7;
+            transition: opacity 0.3s ease;
+        }
+
+        .watermark:hover {
+            opacity: 1;
+        }
+
+        .watermark-img {
+            max-width: 150px;
+            max-height: 50px;
+            object-fit: contain;
+            filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+        }
+
+        .watermark-text {
+            color: #666;
+            font-size: 0.9rem;
+            text-align: right;
+            font-style: italic;
+        }
+
+        /* Loading Indicator */
+        .loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 255, 255, 0.9);
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 5px 25px rgba(0, 0, 0, 0.2);
+            z-index: 1001;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            min-width: 200px;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #ff416c;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        .loading-text {
+            color: #333;
+            font-size: 1rem;
+            text-align: center;
+        }
+
+        .user-count {
+            margin-top: 10px;
+            font-size: 0.9rem;
+            color: #666;
+            text-align: center;
+        }
+
+        @keyframes winnerGlow {
+            from {
+                box-shadow: 0 0 10px rgba(255, 65, 108, 0.5);
+            }
+            to {
+                box-shadow: 0 0 25px rgba(255, 65, 108, 0.8);
+            }
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 600px) {
+            .wheel-container {
+                width: 320px;
+                height: 320px;
+            }
+            
+            .controls {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .btn {
+                width: 100%;
+                max-width: 200px;
+            }
+            
+            .watermark {
+                bottom: 10px;
+                right: 10px;
+            }
+            
+            .watermark-img {
+                max-width: 120px;
+                max-height: 40px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="loading" class="loading">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Loading users...</div>
+        <div id="userCount" class="user-count">0 users loaded</div>
+    </div>
+
+    <div class="wheel-container">
+        <div class="pointer">
+            <svg viewBox="0 0 100 100">
+                <polygon points="50,0 65,100 35,100" fill="#ff416c"/>
+                <circle cx="50" cy="85" r="8" fill="#ffffff"/>
+            </svg>
+        </div>
+        
+        <div class="wheel" id="wheel">
+            <!-- Wheel sectors will be generated dynamically -->
+        </div>
+        
+        <div class="center-circle">
+            <i class="fas fa-star"></i>
+        </div>
+    </div>
+    
+    <div class="controls">
+        <button class="btn btn-primary" id="spinBtn">
+            <i class="fas fa-play-circle"></i> Spin
+        </button>
+        <button class="btn btn-secondary" id="stopBtn" disabled>
+            <i class="fas fa-stop-circle"></i> Stop
+        </button>
+        <button class="btn btn-refresh" id="refreshBtn">
+            <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+    </div>
+    
+    <div class="result" id="result">
+        Loading users data...
+    </div>
+
+    <!-- Watermark container -->
+    <div id="watermarkContainer" class="watermark"></div>
+
+    <script>
+        class PhotoSpinWheel {
+            constructor() {
+                this.photos = [];
+                this.maxPhotos = 20;
+                this.isSpinning = false;
+                this.rotation = 0;
+                this.spinInterval = null;
+                this.currentSpeed = 0;
+                this.maxSpeed = 20;
+                this.selectedPhotoIndex = null;
+                this.spinTimeout = null;
+                this.autoStopTime = 3000;
+                this.watermark = null;
+                this.usersJsonPath = 'users.json'; // Default path to users.json
+                
+                this.initializeElements();
+                this.bindEvents();
+                this.loadWatermarkFromParams();
+                this.loadUsersFromJson();
+            }
+            
+            initializeElements() {
+                this.spinBtn = document.getElementById('spinBtn');
+                this.stopBtn = document.getElementById('stopBtn');
+                this.refreshBtn = document.getElementById('refreshBtn');
+                this.wheel = document.getElementById('wheel');
+                this.result = document.getElementById('result');
+                this.watermarkContainer = document.getElementById('watermarkContainer');
+                this.loadingElement = document.getElementById('loading');
+                this.userCountElement = document.getElementById('userCount');
+            }
+            
+            bindEvents() {
+                this.spinBtn.addEventListener('click', () => this.startSpinning());
+                this.stopBtn.addEventListener('click', () => this.stopSpinning());
+                this.refreshBtn.addEventListener('click', () => this.refreshUsers());
+            }
+            
+            // Load users from users.json file
+            async loadUsersFromJson() {
+                try {
+                    this.showLoading(true);
+                    this.userCountElement.textContent = 'Fetching users data...';
+                    
+                    // Try different paths if default doesn't work
+                    const possiblePaths = [
+                        'users.json',
+                        './users.json',
+                        'data/users.json',
+                        '/users.json'
+                    ];
+                    
+                    let response = null;
+                    let lastError = null;
+                    
+                    // Try each possible path
+                    for (const path of possiblePaths) {
+                        try {
+                            response = await fetch(path);
+                            if (response.ok) break;
+                        } catch (error) {
+                            lastError = error;
+                            continue;
+                        }
+                    }
+                    
+                    if (!response || !response.ok) {
+                        throw new Error(`Failed to load users.json. Tried paths: ${possiblePaths.join(', ')}`);
+                    }
+                    
+                    const usersData = await response.json();
+                    
+                    // Process the user data
+                    this.processUsersData(usersData);
+                    
+                } catch (error) {
+                    console.error('Error loading users:', error);
+                    this.showError('Failed to load users. Using default photos.');
+                    this.addDefaultPhotos();
+                    this.updateWheel();
+                } finally {
+                    this.showLoading(false);
+                }
+            }
+            
+            // Process user data from JSON
+            processUsersData(usersData) {
+                if (!Array.isArray(usersData)) {
+                    throw new Error('Invalid users.json format. Expected an array.');
+                }
+                
+                this.photos = [];
+                
+                usersData.forEach((user, index) => {
+                    if (user.userId && user.photo_url) {
+                        this.photos.push({
+                            id: user.userId,
+                            url: user.photo_url,
+                            userId: user.userId,
+                            index: index + 1
+                        });
+                    }
+                });
+                
+                if (this.photos.length === 0) {
+                    throw new Error('No valid user photos found in users.json');
+                }
+                
+                this.userCountElement.textContent = `${this.photos.length} users loaded`;
+                this.updateWheel();
+                this.saveToLocalStorage();
+                
+                console.log(`Successfully loaded ${this.photos.length} users`);
+            }
+            
+            // Refresh users data
+            async refreshUsers() {
+                this.spinBtn.disabled = true;
+                this.refreshBtn.disabled = true;
+                this.refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Refreshing';
+                
+                try {
+                    await this.loadUsersFromJson();
+                    this.result.innerHTML = `Refreshed! ${this.photos.length} users loaded`;
+                    
+                    // Success message
+                    setTimeout(() => {
+                        if (this.photos.length < 2) {
+                            this.result.innerHTML = `Add ${2 - this.photos.length} more user(s)`;
+                        } else {
+                            this.result.innerHTML = `Ready (${this.photos.length} users)`;
+                        }
+                    }, 2000);
+                    
+                } catch (error) {
+                    this.result.innerHTML = 'Refresh failed. Using cached data.';
+                    this.loadFromLocalStorage();
+                } finally {
+                    this.spinBtn.disabled = false;
+                    this.refreshBtn.disabled = false;
+                    this.refreshBtn.innerHTML = '<i class="fas fa-sync-alt"></i> Refresh';
+                }
+            }
+            
+            // Show/hide loading indicator
+            showLoading(show) {
+                if (show) {
+                    this.loadingElement.style.display = 'flex';
+                } else {
+                    this.loadingElement.style.display = 'none';
+                }
+            }
+            
+            // Show error message
+            showError(message) {
+                this.result.innerHTML = `<span style="color: #ff416c;">${message}</span>`;
+                this.userCountElement.textContent = message;
+            }
+            
+            // Load watermark from URL parameters
+            loadWatermarkFromParams() {
+                const urlParams = new URLSearchParams(window.location.search);
+                
+                const watermarkParamNames = ['watermark', 'wm', 'logo', 'brand', 'image'];
+                
+                let watermarkUrl = null;
+                
+                for (const paramName of watermarkParamNames) {
+                    if (urlParams.has(paramName)) {
+                        watermarkUrl = urlParams.get(paramName);
+                        break;
+                    }
+                }
+                
+                if (watermarkUrl) {
+                    this.createWatermark(watermarkUrl);
+                } else {
+                    this.createTextWatermark();
+                }
+            }
+            
+            createWatermark(url) {
+                let cleanUrl = url.trim();
+                
+                try {
+                    cleanUrl = decodeURIComponent(cleanUrl);
+                } catch (e) {
+                    console.log('URL was not encoded');
+                }
+                
+                try {
+                    new URL(cleanUrl);
+                    
+                    const img = document.createElement('img');
+                    img.className = 'watermark-img';
+                    img.src = cleanUrl;
+                    img.alt = 'Watermark';
+                    img.onerror = () => {
+                        this.watermarkContainer.innerHTML = '';
+                        this.createTextWatermark();
+                    };
+                    
+                    this.watermarkContainer.appendChild(img);
+                    this.watermark = cleanUrl;
+                    
+                } catch (error) {
+                    this.createTextWatermark(cleanUrl);
+                }
+            }
+            
+            createTextWatermark(text = null) {
+                if (!text) {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const textParam = urlParams.get('text') || urlParams.get('name') || 'Spin Wheel';
+                    text = textParam;
+                }
+                
+                const textDiv = document.createElement('div');
+                textDiv.className = 'watermark-text';
+                textDiv.textContent = text;
+                
+                this.watermarkContainer.appendChild(textDiv);
+                this.watermark = text;
+            }
+            
+            generateDistinctColors(count) {
+                const colors = [];
+                const hueStep = 360 / count;
+                
+                for (let i = 0; i < count; i++) {
+                    const hue = (i * hueStep) % 360;
+                    const saturation = 70 + Math.random() * 20;
+                    const lightness = 60 + Math.random() * 15;
+                    
+                    const color = this.hslToHex(hue, saturation, lightness);
+                    colors.push(color);
+                }
+                
+                return colors;
+            }
+            
+            hslToHex(h, s, l) {
+                h /= 360;
+                s /= 100;
+                l /= 100;
+                
+                let r, g, b;
+                
+                if (s === 0) {
+                    r = g = b = l;
+                } else {
+                    const hue2rgb = (p, q, t) => {
+                        if (t < 0) t += 1;
+                        if (t > 1) t -= 1;
+                        if (t < 1/6) return p + (q - p) * 6 * t;
+                        if (t < 1/2) return q;
+                        if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+                        return p;
+                    };
+                    
+                    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+                    const p = 2 * l - q;
+                    
+                    r = hue2rgb(p, q, h + 1/3);
+                    g = hue2rgb(p, q, h);
+                    b = hue2rgb(p, q, h - 1/3);
+                }
+                
+                const toHex = (x) => {
+                    const hex = Math.round(x * 255).toString(16);
+                    return hex.length === 1 ? '0' + hex : hex;
+                };
+                
+                return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+            }
+            
+            startSpinning() {
+                if (this.isSpinning) return;
+                
+                if (this.photos.length < 2) {
+                    this.result.innerHTML = 'Need at least 2 users';
+                    return;
+                }
+                
+                this.isSpinning = true;
+                this.currentSpeed = this.maxSpeed;
+                this.selectedPhotoIndex = null;
+                this.result.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Spinning...';
+                
+                this.spinBtn.disabled = true;
+                this.stopBtn.disabled = false;
+                this.refreshBtn.disabled = true;
+                
+                this.spinInterval = setInterval(() => {
+                    this.rotation += this.currentSpeed;
+                    this.wheel.style.transform = `rotate(${this.rotation}deg)`;
+                }, 30);
+                
+                this.spinTimeout = setTimeout(() => {
+                    if (this.isSpinning) {
+                        this.stopSpinning();
+                    }
+                }, this.autoStopTime);
+            }
+            
+            stopSpinning() {
+                if (!this.isSpinning) return;
+                
+                if (this.spinTimeout) {
+                    clearTimeout(this.spinTimeout);
+                    this.spinTimeout = null;
+                }
+                
+                const slowDown = setInterval(() => {
+                    this.currentSpeed *= 0.85;
+                    
+                    if (this.currentSpeed < 0.5) {
+                        clearInterval(slowDown);
+                        clearInterval(this.spinInterval);
+                        
+                        this.isSpinning = false;
+                        this.spinBtn.disabled = false;
+                        this.stopBtn.disabled = true;
+                        this.refreshBtn.disabled = false;
+                        
+                        this.determineSelectedUser();
+                    }
+                }, 50);
+            }
+            
+            determineSelectedUser() {
+                const normalizedRotation = ((this.rotation % 360) + 360) % 360;
+                const degreesPerSector = 360 / this.photos.length;
+                const adjustedRotation = (360 - normalizedRotation) % 360;
+                const sectorIndex = Math.floor(adjustedRotation / degreesPerSector);
+                
+                this.selectedPhotoIndex = sectorIndex;
+                const selectedUser = this.photos[sectorIndex];
+                
+                this.result.innerHTML = `🎉 Winner: User ${selectedUser.userId} 🎉`;
+                
+                this.highlightSelectedSector(sectorIndex);
+            }
+            
+            highlightSelectedSector(sectorIndex) {
+                const photoContainers = document.querySelectorAll('.photo-container');
+                photoContainers.forEach(container => {
+                    container.classList.remove('winner-highlight');
+                });
+                
+                if (photoContainers[sectorIndex]) {
+                    photoContainers[sectorIndex].classList.add('winner-highlight');
+                    
+                    setTimeout(() => {
+                        photoContainers[sectorIndex].classList.remove('winner-highlight');
+                    }, 3000);
+                }
+            }
+            
+            updateWheel() {
+                this.wheel.innerHTML = '';
+                
+                if (this.photos.length === 0) {
+                    this.result.innerHTML = 'No users loaded';
+                    return;
+                }
+                
+                const colors = this.generateDistinctColors(this.photos.length);
+                const totalPhotos = this.photos.length;
+                const anglePerSector = 360 / totalPhotos;
+                
+                const baseWheel = document.createElement('div');
+                baseWheel.className = 'wheel-sector';
+                
+                let conicGradient = 'conic-gradient(';
+                for (let i = 0; i < totalPhotos; i++) {
+                    const startAngle = i * anglePerSector;
+                    const endAngle = startAngle + anglePerSector;
+                    conicGradient += `${colors[i]} ${startAngle}deg ${endAngle}deg`;
+                    if (i < totalPhotos - 1) {
+                        conicGradient += ', ';
+                    }
+                }
+                conicGradient += ')';
+                
+                baseWheel.style.background = conicGradient;
+                this.wheel.appendChild(baseWheel);
+                
+                for (let i = 0; i < totalPhotos; i++) {
+                    const user = this.photos[i];
+                    const color = colors[i];
+                    
+                    const sectorContent = document.createElement('div');
+                    sectorContent.className = 'sector-content';
+                    
+                    const startAngle = i * anglePerSector;
+                    const midAngle = startAngle + (anglePerSector / 2);
+                    
+                    const radius = this.calculatePhotoRadius(totalPhotos);
+                    const radian = (midAngle - 90) * Math.PI / 180;
+                    const x = 50 + radius * Math.cos(radian);
+                    const y = 50 + radius * Math.sin(radian);
+                    
+                    const photoSize = this.calculatePhotoSize(totalPhotos);
+                    
+                    const photoContainer = document.createElement('div');
+                    photoContainer.className = 'photo-container';
+                    photoContainer.style.width = `${photoSize}px`;
+                    photoContainer.style.height = `${photoSize}px`;
+                    photoContainer.dataset.index = i;
+                    photoContainer.title = `User: ${user.userId}`;
+                    
+                    const photoImg = document.createElement('img');
+                    photoImg.className = 'photo';
+                    photoImg.src = user.url;
+                    photoImg.alt = `User ${user.userId}`;
+                    photoImg.onerror = function() {
+                        this.src = 'data:image/svg+xml;base64,' + btoa(`
+                            <svg xmlns="http://www.w3.org/2000/svg" width="${photoSize}" height="${photoSize}" viewBox="0 0 ${photoSize} ${photoSize}">
+                                <circle cx="${photoSize/2}" cy="${photoSize/2}" r="${photoSize/2}" fill="#666"/>
+                                <text x="${photoSize/2}" y="${photoSize/2 + 5}" text-anchor="middle" fill="white" font-size="${photoSize/4}">${user.userId.substring(0, 6)}</text>
+                            </svg>
+                        `);
+                    };
+                    
+                    photoContainer.appendChild(photoImg);
+                    sectorContent.appendChild(photoContainer);
+                    
+                    sectorContent.style.transform = `translate(-50%, -50%) rotate(${midAngle + 90}deg)`;
+                    sectorContent.style.left = `${x}%`;
+                    sectorContent.style.top = `${y}%`;
+                    
+                    this.wheel.appendChild(sectorContent);
+                    
+                    user.color = color;
+                }
+                
+                const sectorBorder = document.createElement('div');
+                sectorBorder.className = 'sector-border';
+                this.wheel.appendChild(sectorBorder);
+                
+                const centerCircle = document.createElement('div');
+                centerCircle.className = 'center-circle';
+                centerCircle.innerHTML = '<i class="fas fa-star"></i>';
+                this.wheel.appendChild(centerCircle);
+                
+                if (this.photos.length < 2) {
+                    this.result.innerHTML = `Need ${2 - this.photos.length} more user(s)`;
+                } else {
+                    this.result.innerHTML = `Ready! ${this.photos.length} users loaded`;
+                }
+            }
+            
+            calculatePhotoSize(photoCount) {
+                if (photoCount > 16) {
+                    return 40;
+                } else if (photoCount > 12) {
+                    return 50;
+                } else if (photoCount > 8) {
+                    return 60;
+                } else if (photoCount > 4) {
+                    return 70;
+                } else {
+                    return 80;
+                }
+            }
+            
+            calculatePhotoRadius(photoCount) {
+                if (photoCount > 16) {
+                    return 42;
+                } else if (photoCount > 12) {
+                    return 40;
+                } else if (photoCount > 8) {
+                    return 38;
+                } else if (photoCount > 4) {
+                    return 35;
+                } else {
+                    return 32;
+                }
+            }
+            
+            // Fallback to default photos if users.json fails
+            addDefaultPhotos() {
+                const defaultPhotos = [
+                    {
+                        id: "8052864919",
+                        url: "https://tmpfiles.org/dl/18010306/8052864919.jpg",
+                        userId: "8052864919"
+                    },
+                    {
+                        id: "6702069974",
+                        url: "https://tmpfiles.org/dl/18010304/6702069974.jpg",
+                        userId: "6702069974"
+                    },
+                    {
+                        id: "6407458800",
+                        url: "https://tmpfiles.org/dl/18010305/6407458800.jpg",
+                        userId: "6407458800"
+                    }
+                ];
+                
+                this.photos = defaultPhotos;
+            }
+            
+            saveToLocalStorage() {
+                localStorage.setItem('spinWheelUsers', JSON.stringify(this.photos));
+            }
+            
+            loadFromLocalStorage() {
+                const saved = localStorage.getItem('spinWheelUsers');
+                if (saved) {
+                    try {
+                        this.photos = JSON.parse(saved);
+                        this.updateWheel();
+                        this.userCountElement.textContent = `${this.photos.length} users (cached)`;
+                    } catch (e) {
+                        console.error('Failed to load saved users:', e);
+                    }
+                }
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            window.photoSpinWheel = new PhotoSpinWheel();
+            
+            console.log('Users are loaded from users.json file');
+            console.log('Expected format: [{userId: "123", photo_url: "https://..."}, ...]');
+            console.log('Watermark can be added via URL: ?watermark=logo.png&text=Brand');
+        });
+    </script>
+</body>
+</html>
