@@ -10,12 +10,12 @@ jobs:
 
     steps:
       # ----------------------------
-      # Checkout repository
+      # Checkout repo
       # ----------------------------
       - uses: actions/checkout@v4
 
       # ----------------------------
-      # Install required tools
+      # Install dependencies
       # ----------------------------
       - name: Install dependencies
         run: |
@@ -23,14 +23,14 @@ jobs:
           sudo apt-get install -y ffmpeg imagemagick jq curl bc
 
       # ----------------------------
-      # Fetch & normalize Telegram avatars
+      # Fetch Telegram avatars (JPG only)
       # ----------------------------
-      - name: Fetch & normalize Telegram avatars
+      - name: Fetch Telegram avatars
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         run: |
           set -e
-          mkdir -p avatars_raw avatars
+          mkdir -p avatars
 
           IDS='${{ toJson(github.event.client_payload.userIds) }}'
           echo "User IDs: $IDS"
@@ -38,6 +38,7 @@ jobs:
           echo "$IDS" | jq -r '.[]' | while read id; do
             echo "Fetching avatar for $id"
 
+            # Get profile photos
             RESP=$(curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUserProfilePhotos?user_id=$id&limit=1")
             FILE_ID=$(echo "$RESP" | jq -r '.result.photos[0][-1].file_id // empty')
 
@@ -46,7 +47,9 @@ jobs:
               continue
             fi
 
-            FILE_PATH=$(curl -s "https://api.telegram.org/bot$BOT_TOKEN/getFile?file_id=$FILE_ID" \
+            # Get file path
+            FILE_PATH=$(curl -s \
+              "https://api.telegram.org/bot$BOT_TOKEN/getFile?file_id=$FILE_ID" \
               | jq -r '.result.file_path // empty')
 
             if [ -z "$FILE_PATH" ]; then
@@ -54,18 +57,19 @@ jobs:
               continue
             fi
 
-            # Download raw file (jpg / webp / anything)
+            # Download JPG safely
             curl -L --retry 3 --fail \
               "https://api.telegram.org/file/bot$BOT_TOKEN/$FILE_PATH" \
-              -o avatars_raw/$id.raw || continue
+              -o avatars/$id.jpg
 
-            # Normalize to PNG (THIS IS THE KEY FIX)
-            if convert avatars_raw/$id.raw avatars/$id.png 2>/dev/null; then
-              echo "Avatar normalized for $id"
-            else
-              echo "Avatar conversion failed for $id"
-              rm -f avatars/$id.png
+            # HARD VALIDATION
+            if ! identify avatars/$id.jpg >/dev/null 2>&1; then
+              echo "Corrupted JPG for $id"
+              rm -f avatars/$id.jpg
+              exit 1
             fi
+
+            echo "Avatar OK for $id"
           done
 
       # ----------------------------
@@ -73,10 +77,9 @@ jobs:
       # ----------------------------
       - name: Debug avatars
         run: |
-          echo "Avatars directory:"
-          ls -lh avatars || true
-          echo "File types:"
-          file avatars/* || true
+          ls -lh avatars
+          file avatars/*.jpg
+          identify avatars/*.jpg
 
       # ----------------------------
       # Build wheel image
@@ -86,13 +89,13 @@ jobs:
           bash scripts/build_wheel.sh
 
       # ----------------------------
-      # Pick random winner
+      # Pick winner
       # ----------------------------
       - name: Pick winner
         run: |
           COUNT=$(ls avatars | wc -l)
           if [ "$COUNT" -lt 2 ]; then
-            echo "Not enough avatars to spin"
+            echo "Need at least 2 avatars"
             exit 1
           fi
 
@@ -100,10 +103,10 @@ jobs:
           echo "WINNER=$WIN" >> $GITHUB_ENV
           echo "COUNT=$COUNT" >> $GITHUB_ENV
 
-          echo "Winner index: $WIN / $COUNT"
+          echo "Winner index: $WIN"
 
       # ----------------------------
-      # Render spin video (slow down + stop)
+      # Render spin video (slow + stop)
       # ----------------------------
       - name: Render spin video
         run: |
@@ -112,7 +115,7 @@ jobs:
 
           SLICE_ANGLE=$(echo "360 / $COUNT" | bc -l)
 
-          # EXACTLY MATCHES YOUR HTML LOGIC
+          # EXACT match with your HTML logic
           FINAL_ROTATION=$(echo "$FULL_SPINS*360 + (360 - ($WINNER*$SLICE_ANGLE) - ($SLICE_ANGLE/2))" | bc)
 
           echo "Final rotation: $FINAL_ROTATION"
@@ -146,5 +149,5 @@ jobs:
       # ----------------------------
       - name: Cleanup
         run: |
-          rm -rf avatars avatars_raw wheel.png output.mp4
+          rm -rf avatars wheel.png output.mp4
           
