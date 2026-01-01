@@ -9,86 +9,142 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # ----------------------------
+      # Checkout repository
+      # ----------------------------
       - uses: actions/checkout@v4
 
+      # ----------------------------
+      # Install required tools
+      # ----------------------------
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg imagemagick jq curl bc
 
+      # ----------------------------
+      # Fetch & normalize Telegram avatars
+      # ----------------------------
       - name: Fetch & normalize Telegram avatars
-  env:
-    BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-  run: |
-    mkdir -p avatars_raw avatars
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: |
+          set -e
+          mkdir -p avatars_raw avatars
 
-    IDS='${{ toJson(github.event.client_payload.userIds) }}'
+          IDS='${{ toJson(github.event.client_payload.userIds) }}'
+          echo "User IDs: $IDS"
 
-    echo "$IDS" | jq -r '.[]' | while read id; do
-      echo "Fetching avatar for $id"
+          echo "$IDS" | jq -r '.[]' | while read id; do
+            echo "Fetching avatar for $id"
 
-      RESP=$(curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUserProfilePhotos?user_id=$id&limit=1")
-      FILE_ID=$(echo "$RESP" | jq -r '.result.photos[0][-1].file_id // empty')
+            RESP=$(curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUserProfilePhotos?user_id=$id&limit=1")
+            FILE_ID=$(echo "$RESP" | jq -r '.result.photos[0][-1].file_id // empty')
 
-      if [ -z "$FILE_ID" ]; then
-        echo "No avatar for $id"
-        continue
-      fi
+            if [ -z "$FILE_ID" ]; then
+              echo "No avatar for $id"
+              continue
+            fi
 
-      FILE_PATH=$(curl -s "https://api.telegram.org/bot$BOT_TOKEN/getFile?file_id=$FILE_ID" | jq -r '.result.file_path // empty')
+            FILE_PATH=$(curl -s "https://api.telegram.org/bot$BOT_TOKEN/getFile?file_id=$FILE_ID" \
+              | jq -r '.result.file_path // empty')
 
-      if [ -z "$FILE_PATH" ]; then
-        echo "Invalid file path for $id"
-        continue
-      fi
+            if [ -z "$FILE_PATH" ]; then
+              echo "Invalid file path for $id"
+              continue
+            fi
 
-      # Download raw file (may be jpg/webp)
-      curl -L --retry 3 --fail \
-        "https://api.telegram.org/file/bot$BOT_TOKEN/$FILE_PATH" \
-        -o avatars_raw/$id.raw || continue
+            # Download raw file (jpg / webp / anything)
+            curl -L --retry 3 --fail \
+              "https://api.telegram.org/file/bot$BOT_TOKEN/$FILE_PATH" \
+              -o avatars_raw/$id.raw || continue
 
-      # HARD normalize to PNG (this fixes EVERYTHING)
-      if convert avatars_raw/$id.raw avatars/$id.png 2>/dev/null; then
-        echo "Avatar OK for $id"
-      else
-        echo "Failed to convert avatar for $id"
-        rm -f avatars/$id.png
-      fi
-    done
+            # Normalize to PNG (THIS IS THE KEY FIX)
+            if convert avatars_raw/$id.raw avatars/$id.png 2>/dev/null; then
+              echo "Avatar normalized for $id"
+            else
+              echo "Avatar conversion failed for $id"
+              rm -f avatars/$id.png
+            fi
+          done
 
+      # ----------------------------
+      # Debug avatars (remove later)
+      # ----------------------------
+      - name: Debug avatars
+        run: |
+          echo "Avatars directory:"
+          ls -lh avatars || true
+          echo "File types:"
+          file avatars/* || true
 
+      # ----------------------------
+      # Build wheel image
+      # ----------------------------
       - name: Build wheel image
-        run: bash scripts/build_wheel.sh
+        run: |
+          bash scripts/build_wheel.sh
 
+      # ----------------------------
+      # Pick random winner
+      # ----------------------------
       - name: Pick winner
         run: |
           COUNT=$(ls avatars | wc -l)
+          if [ "$COUNT" -lt 2 ]; then
+            echo "Not enough avatars to spin"
+            exit 1
+          fi
+
           WIN=$((RANDOM % COUNT))
           echo "WINNER=$WIN" >> $GITHUB_ENV
           echo "COUNT=$COUNT" >> $GITHUB_ENV
 
-      - name: Render spin video (slow down + stop)
+          echo "Winner index: $WIN / $COUNT"
+
+      # ----------------------------
+      # Render spin video (slow down + stop)
+      # ----------------------------
+      - name: Render spin video
         run: |
           DURATION=3
           FULL_SPINS=4
+
           SLICE_ANGLE=$(echo "360 / $COUNT" | bc -l)
 
-          # MATCHES YOUR HTML LOGIC
+          # EXACTLY MATCHES YOUR HTML LOGIC
           FINAL_ROTATION=$(echo "$FULL_SPINS*360 + (360 - ($WINNER*$SLICE_ANGLE) - ($SLICE_ANGLE/2))" | bc)
 
-          ffmpeg -y -loop 1 -i wheel.png \
-          -filter_complex "
-          rotate='(1 - pow(1 - t/$DURATION, 3)) * $FINAL_ROTATION * PI/180':c=none,
-          drawbox=x=530:y=20:w=20:h=60:color=red:t=fill
-          " \
-          -t $DURATION \
-          -r 30 \
-          -pix_fmt yuv420p \
-          output.mp4
+          echo "Final rotation: $FINAL_ROTATION"
 
+          ffmpeg -y -loop 1 -i wheel.png \
+            -filter_complex "
+            rotate='(1 - pow(1 - t/$DURATION, 3)) * $FINAL_ROTATION * PI/180':c=none,
+            drawbox=x=530:y=20:w=20:h=60:color=red:t=fill
+            " \
+            -t $DURATION \
+            -r 30 \
+            -pix_fmt yuv420p \
+            output.mp4
+
+      # ----------------------------
+      # Send video to Telegram
+      # ----------------------------
       - name: Send video to Telegram
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         run: |
           CHAT_ID="${{ github.event.client_payload.chatid }}"
+          echo "Sending video to chat $CHAT_ID"
+
           curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendVideo" \
+            -F chat_id="$CHAT_ID" \
+            -F video=@output.mp4
+
+      # ----------------------------
+      # Cleanup
+      # ----------------------------
+      - name: Cleanup
+        run: |
+          rm -rf avatars avatars_raw wheel.png output.mp4
+          
