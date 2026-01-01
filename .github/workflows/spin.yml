@@ -23,70 +23,40 @@ jobs:
           sudo apt-get install -y ffmpeg imagemagick jq curl bc
 
       # ----------------------------
-      # Fetch Telegram avatars (JPG only)
+      # Download avatars from YOUR API response
       # ----------------------------
-      - name: Fetch Telegram avatars
-        env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+      - name: Download user images
         run: |
           set -e
           mkdir -p avatars
 
-          IDS='${{ toJson(github.event.client_payload.userIds) }}'
-          echo "User IDs: $IDS"
+          USERS='${{ toJson(github.event.client_payload.users) }}'
 
-          echo "$IDS" | jq -r '.[]' | while read id; do
-            echo "Fetching avatar for $id"
+          COUNT=$(echo "$USERS" | jq length)
+          if [ "$COUNT" -lt 2 ]; then
+            echo "Need at least 2 users"
+            exit 1
+          fi
 
-            # Get profile photos
-            RESP=$(curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUserProfilePhotos?user_id=$id&limit=1")
-            FILE_ID=$(echo "$RESP" | jq -r '.result.photos[0][-1].file_id // empty')
+          echo "$USERS" | jq -r '.[] | .photo_url' | nl -w1 -s':' | while read line; do
+            IDX=$(echo "$line" | cut -d: -f1)
+            URL=$(echo "$line" | cut -d: -f2-)
 
-            if [ -z "$FILE_ID" ]; then
-              echo "No avatar for $id"
-              continue
-            fi
+            echo "Downloading $URL"
+            curl -L --fail "$URL" -o avatars/$IDX.jpg
 
-            # Get file path
-            FILE_PATH=$(curl -s \
-              "https://api.telegram.org/bot$BOT_TOKEN/getFile?file_id=$FILE_ID" \
-              | jq -r '.result.file_path // empty')
-
-            if [ -z "$FILE_PATH" ]; then
-              echo "Invalid file path for $id"
-              continue
-            fi
-
-            # Download JPG safely
-            curl -L --retry 3 --fail \
-              "https://api.telegram.org/file/bot$BOT_TOKEN/$FILE_PATH" \
-              -o avatars/$id.jpg
-
-            # HARD VALIDATION
-            if ! identify avatars/$id.jpg >/dev/null 2>&1; then
-              echo "Corrupted JPG for $id"
-              rm -f avatars/$id.jpg
+            # Validate image
+            identify avatars/$IDX.jpg >/dev/null 2>&1 || {
+              echo "Invalid image: $URL"
               exit 1
-            fi
-
-            echo "Avatar OK for $id"
+            }
           done
-
-      # ----------------------------
-      # Debug avatars (remove later)
-      # ----------------------------
-      - name: Debug avatars
-        run: |
-          ls -lh avatars
-          file avatars/*.jpg
-          identify avatars/*.jpg
 
       # ----------------------------
       # Build wheel image
       # ----------------------------
       - name: Build wheel image
-        run: |
-          bash scripts/build_wheel.sh
+        run: bash scripts/build_wheel.sh
 
       # ----------------------------
       # Pick winner
@@ -94,16 +64,11 @@ jobs:
       - name: Pick winner
         run: |
           COUNT=$(ls avatars | wc -l)
-          if [ "$COUNT" -lt 2 ]; then
-            echo "Need at least 2 avatars"
-            exit 1
-          fi
-
           WIN=$((RANDOM % COUNT))
           echo "WINNER=$WIN" >> $GITHUB_ENV
           echo "COUNT=$COUNT" >> $GITHUB_ENV
 
-          echo "Winner index: $WIN"
+          echo "Winner index: $WIN / $COUNT"
 
       # ----------------------------
       # Render spin video (slow + stop)
@@ -115,10 +80,8 @@ jobs:
 
           SLICE_ANGLE=$(echo "360 / $COUNT" | bc -l)
 
-          # EXACT match with your HTML logic
+          # EXACT match with your UI logic
           FINAL_ROTATION=$(echo "$FULL_SPINS*360 + (360 - ($WINNER*$SLICE_ANGLE) - ($SLICE_ANGLE/2))" | bc)
-
-          echo "Final rotation: $FINAL_ROTATION"
 
           ffmpeg -y -loop 1 -i wheel.png \
             -filter_complex "
