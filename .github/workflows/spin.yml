@@ -69,7 +69,7 @@ jobs:
             -framerate 30 \
             -f x11grab \
             -i :99.0+0,0 \
-            -t 8 \
+            -t 5 \
             -pix_fmt yuv420p \
             spin.mp4
 
