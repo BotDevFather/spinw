@@ -11,29 +11,60 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install tools
-        run: sudo apt-get install -y ffmpeg imagemagick jq curl
-
-      - name: Fetch avatars
+      - name: Install dependencies
         run: |
-          BOT="${{ github.event.client_payload.botToken }}"
-          IDS='${{ toJson(github.event.client_payload.userIds) }}'
-          bash scripts/fetch_avatars.sh $BOT $(echo $IDS | jq -r '.[]')
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg imagemagick jq curl bc
 
-      - name: Build wheel
+      - name: Fetch Telegram avatars
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: |
+          mkdir avatars
+          IDS='${{ toJson(github.event.client_payload.userIds) }}'
+          echo "$IDS" | jq -r '.[]' | while read id; do
+            FILE_ID=$(curl -s "https://api.telegram.org/bot$BOT_TOKEN/getUserProfilePhotos?user_id=$id&limit=1" | jq -r '.result.photos[0][0].file_id')
+            FILE_PATH=$(curl -s "https://api.telegram.org/bot$BOT_TOKEN/getFile?file_id=$FILE_ID" | jq -r '.result.file_path')
+            curl -s "https://api.telegram.org/file/bot$BOT_TOKEN/$FILE_PATH" -o avatars/$id.jpg
+          done
+
+      - name: Build wheel image
         run: bash scripts/build_wheel.sh
 
-      - name: Spin
+      - name: Pick winner
         run: |
           COUNT=$(ls avatars | wc -l)
           WIN=$((RANDOM % COUNT))
-          bash scripts/spin_video.sh $WIN $COUNT
+          echo "WINNER=$WIN" >> $GITHUB_ENV
+          echo "COUNT=$COUNT" >> $GITHUB_ENV
 
-      - name: Send to Telegram
+      - name: Render spin video (slow down + stop)
         run: |
-          BOT="${{ github.event.client_payload.botToken }}"
-          CHAT="${{ github.event.client_payload.chatid }}"
-          bash scripts/send_telegram.sh $BOT $CHAT
+          DURATION=3
+          FULL_SPINS=4
+          SLICE_ANGLE=$(echo "360 / $COUNT" | bc -l)
+
+          # MATCHES YOUR HTML LOGIC
+          FINAL_ROTATION=$(echo "$FULL_SPINS*360 + (360 - ($WINNER*$SLICE_ANGLE) - ($SLICE_ANGLE/2))" | bc)
+
+          ffmpeg -y -loop 1 -i wheel.png \
+          -filter_complex "
+          rotate='(1 - pow(1 - t/$DURATION, 3)) * $FINAL_ROTATION * PI/180':c=none,
+          drawbox=x=530:y=20:w=20:h=60:color=red:t=fill
+          " \
+          -t $DURATION \
+          -r 30 \
+          -pix_fmt yuv420p \
+          output.mp4
+
+      - name: Send video to Telegram
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: |
+          CHAT_ID="${{ github.event.client_payload.chatid }}"
+          curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendVideo" \
+            -F chat_id="$CHAT_ID" \
+            -F video=@output.mp4
 
       - name: Cleanup
         run: rm -rf avatars wheel.png output.mp4
