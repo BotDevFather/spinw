@@ -1,18 +1,22 @@
 #!/bin/bash
 
-WINNER=$1
+WINNER_INDEX=$1
 COUNT=$2
 
 DURATION=3
 FULL_SPINS=4
-SLICE_ANGLE=$((360 / COUNT))
-FINAL_ANGLE=$((FULL_SPINS * 360 + WINNER * SLICE_ANGLE))
 
-ffmpeg -loop 1 -i wheel.png \
+SLICE_ANGLE=$(echo "360 / $COUNT" | bc -l)
+
+# FINAL ANGLE — MATCHES UI LOGIC
+FINAL_ROTATION=$(echo "$FULL_SPINS*360 + (360 - ($WINNER_INDEX*$SLICE_ANGLE) - ($SLICE_ANGLE/2))" | bc)
+
+ffmpeg -y -loop 1 -i wheel.png \
 -filter_complex "
-[0]rotate='(t/$DURATION)*$FINAL_ANGLE*PI/180':c=none[w];
-[w]drawbox=x=390:y=10:w=20:h=40:color=red:t=fill
+rotate='(1 - pow(1 - t/$DURATION, 3)) * $FINAL_ROTATION * PI/180':c=none,
+drawbox=x=530:y=20:w=20:h=60:color=red:t=fill
 " \
 -t $DURATION \
+-r 30 \
 -pix_fmt yuv420p \
 output.mp4
