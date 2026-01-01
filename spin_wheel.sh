@@ -2,10 +2,14 @@
 set -e
 
 # ================= CONFIG =================
+CANVAS=1000
 WHEEL_SIZE=800
 PHOTO_SIZE=120
 MAX_USERS=20
 OUT="wheel.png"
+
+# watermark comes from env (payload)
+WATERMARK="${WATERMARK:-}"
 
 COLORS=(
   "#FF6B6B" "#4ECDC4" "#FFD166" "#06D6A0" "#118AB2"
@@ -25,10 +29,7 @@ if [ "$#" -gt "$MAX_USERS" ]; then
 fi
 
 for cmd in convert composite curl bc; do
-  command -v "$cmd" >/dev/null || {
-    echo "❌ Missing dependency: $cmd"
-    exit 1
-  }
+  command -v "$cmd" >/dev/null || exit 1
 done
 
 COUNT=$#
@@ -37,8 +38,7 @@ TMP=$(mktemp -d)
 CX=$((WHEEL_SIZE / 2))
 CY=$((WHEEL_SIZE / 2))
 R=$((WHEEL_SIZE / 2))
-PHOTO_R=$((WHEEL_SIZE * 35 / 100))
-
+PHOTO_R=$((WHEEL_SIZE * 38 / 100))
 ANGLE=$(echo "360 / $COUNT" | bc -l)
 
 echo "Users: $COUNT"
@@ -46,8 +46,7 @@ echo "Users: $COUNT"
 # ================= DOWNLOAD & CIRCLE PHOTOS =================
 i=0
 for url in "$@"; do
-  i=$((i + 1))
-
+  i=$((i+1))
   curl -L --silent "$url" -o "$TMP/$i.jpg" || true
 
   convert "$TMP/$i.jpg" \
@@ -60,11 +59,11 @@ for url in "$@"; do
     "$TMP/p$i.png"
 done
 
-# ================= CREATE BASE WHEEL =================
-convert -size ${WHEEL_SIZE}x${WHEEL_SIZE} xc:none "$TMP/base.png"
+# ================= BASE WHEEL =================
+convert -size ${WHEEL_SIZE}x${WHEEL_SIZE} xc:none "$TMP/wheel.png"
 
 for ((i=0; i<COUNT; i++)); do
-  START=$(echo "$i * $ANGLE" | bc -l)
+  START=$(echo "$i * $ANGLE - 90" | bc -l)   # <<< FIX POINTER ORIENTATION
   END=$(echo "$START + $ANGLE" | bc -l)
   COLOR=${COLORS[$((i % ${#COLORS[@]}))]}
 
@@ -73,12 +72,12 @@ for ((i=0; i<COUNT; i++)); do
     -draw "arc $CX,$CY $((CX+R)),$((CY+R)) $START $END" \
     "$TMP/sector.png"
 
-  composite "$TMP/sector.png" "$TMP/base.png" "$TMP/base.png"
+  composite "$TMP/sector.png" "$TMP/wheel.png" "$TMP/wheel.png"
 done
 
 # ================= PLACE PHOTOS =================
 for ((i=0; i<COUNT; i++)); do
-  MID=$(echo "$i * $ANGLE + $ANGLE / 2" | bc -l)
+  MID=$(echo "$i * $ANGLE + $ANGLE / 2 - 90" | bc -l)
   RAD=$(echo "$MID * 3.14159265 / 180" | bc -l)
 
   X=$(echo "$CX + $PHOTO_R * c($RAD)" | bc -l | cut -d. -f1)
@@ -90,17 +89,33 @@ for ((i=0; i<COUNT; i++)); do
     "$TMP/r$i.png"
 
   composite -geometry "+$((X - PHOTO_SIZE/2))+$((Y - PHOTO_SIZE/2))" \
-    "$TMP/r$i.png" "$TMP/base.png" "$TMP/base.png"
+    "$TMP/r$i.png" "$TMP/wheel.png" "$TMP/wheel.png"
 done
 
-# ================= POINTER =================
-convert -size 80x100 xc:none \
+# ================= POINTER (TOP, CORRECT) =================
+convert -size 100x120 xc:none \
   -fill "#ff416c" \
-  -draw "polygon 40,0 80,100 0,100" \
+  -draw "polygon 50,0 100,120 0,120" \
   "$TMP/pointer.png"
 
-composite -gravity north "$TMP/pointer.png" "$TMP/base.png" "$OUT"
+# ================= FINAL CANVAS =================
+convert -size ${CANVAS}x${CANVAS} xc:white "$OUT"
+
+# center wheel
+composite -gravity center "$TMP/wheel.png" "$OUT" "$OUT"
+
+# pointer on top
+composite -gravity north "$TMP/pointer.png" "$OUT" "$OUT"
+
+# ================= WATERMARK =================
+if [ -n "$WATERMARK" ]; then
+  convert "$OUT" \
+    -gravity south \
+    -fill "#999999" \
+    -pointsize 28 \
+    -annotate +0+30 "$WATERMARK" \
+    "$OUT"
+fi
 
 rm -rf "$TMP"
-
-echo "✅ Spin wheel generated: $OUT"
+echo "✅ Final spin wheel generated: $OUT"
