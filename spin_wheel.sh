@@ -106,7 +106,7 @@ composite -gravity center -geometry -380-360 "$TMP/wheel.png" "$OUT" "$OUT"
 
 
 # pointer on top
-composite -gravity north "$TMP/pointer.png" "$OUT" "$OUT"
+composite -gravity south "$TMP/pointer.png" "$OUT" "$OUT"
 
 # ================= WATERMARK =================
 if [ -n "$WATERMARK" ]; then
