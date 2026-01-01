@@ -29,7 +29,6 @@ jobs:
         run: |
           set -e
           mkdir -p avatars
-          echo ${github.event.client_payload}
 
           USERS='${{ toJson(github.event.client_payload.users) }}'
 
@@ -102,7 +101,8 @@ jobs:
           BOT_TOKEN: ${{ github.event.client_payload.botToken }}
         run: |
           CHAT_ID="${{ github.event.client_payload.chatid }}"
-          echo "Sending video to chat $CHAT_ID"
+          RAW_DATA=${{ github.event.client_payload }}"
+          echo "Sending video to chat $CHAT_ID $RAW_DATA"
 
           curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendVideo" \
             -F chat_id="$CHAT_ID" \
