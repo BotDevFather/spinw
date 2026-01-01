@@ -1,4 +1,4 @@
-name: Spin Wheel Generator
+name: Spin Wheel
 
 on:
   repository_dispatch:
@@ -9,47 +9,27 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ----------------------------
-      # Checkout repo
-      # ----------------------------
       - uses: actions/checkout@v4
 
-      # ----------------------------
-      # Install dependencies
-      # ----------------------------
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y imagemagick curl bc
+          sudo apt-get install -y imagemagick curl bc jq
 
-      # ----------------------------
-      # Generate wheel image
-      # ----------------------------
-      - name: Generate spin wheel
+      - name: Generate wheel
         run: |
           chmod +x spin_wheel.sh
-
           USERS='${{ toJson(github.event.client_payload.users) }}'
-
-          # Extract photo URLs into args
           URLS=$(echo "$USERS" | jq -r '.[].photo_url' | tr '\n' ' ')
-
-          echo "Using URLs:"
-          echo "$URLS"
-
           ./spin_wheel.sh $URLS
 
-      # ----------------------------
-      # Send image to Telegram
-      # ----------------------------
-      - name: Send wheel to Telegram
+      - name: Send to Telegram
         env:
           BOT_TOKEN: ${{ github.event.client_payload.botToken }}
-          CHAT_ID: ${{ github.event.client_payload.chatid }}
+          CHAT_ID:  ${{ github.event.client_payload.chatid }}
         run: |
-          echo "Sending wheel.png to chat $CHAT_ID"
-
           curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendPhoto" \
             -F chat_id="$CHAT_ID" \
             -F photo=@wheel.png \
             -F caption="🎡 Spin Wheel Generated"
+            
