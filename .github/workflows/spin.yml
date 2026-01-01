@@ -98,7 +98,7 @@ jobs:
       # ----------------------------
       - name: Send video to Telegram
         env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          BOT_TOKEN: ${{ github.event.client_payload.botToken }}
         run: |
           CHAT_ID="${{ github.event.client_payload.chatid }}"
           echo "Sending video to chat $CHAT_ID"
