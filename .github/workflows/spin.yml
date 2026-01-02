@@ -1,4 +1,4 @@
-name: Spin Wheel Render & Send
+name: Render Spin Video
 
 on:
   repository_dispatch:
@@ -7,71 +7,31 @@ on:
 jobs:
   render:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install system deps
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            xvfb \
-            ffmpeg \
-            chromium-browser \
-            curl
+          sudo apt update
+          sudo apt install -y ffmpeg xvfb
 
-      # -----------------------------
-      # START DISPLAY
-      # -----------------------------
-      - name: Start Xvfb
-        run: |
-          Xvfb :99 -screen 0 500x650x24 &
-          echo "DISPLAY=:99" >> $GITHUB_ENV
-          sleep 2
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
-      # -----------------------------
-      # LAUNCH CHROMIUM WITH PAYLOAD
-      # -----------------------------
-      - name: Launch Spin Wheel
+      - name: Install npm deps
         run: |
-          chromium-browser \
-            --no-sandbox \
-            --disable-gpu \
-            --window-size=500,650 \
-            --window-position=0,0 \
-            --disable-infobars \
-            --app="data:text/html,\
-            <script>\
-            window.__SPIN_PAYLOAD__ = { \
-              users: ${{ toJson(github.event.client_payload.users) }}, \
-              watermark: '${{ github.event.client_payload.watermark }}' \
-            };\
-            </script>\
-            $(cat index.html)" &
-          sleep 4
+          npm install
 
-      # -----------------------------
-      # RECORD VIDEO
-      # -----------------------------
-      - name: Record spin
+      - name: Run renderer
+        env:
+          HTML_URL: ${{ github.event.client_payload.renderUrl }}
+          BOT_TOKEN: ${{ github.event.client_payload.botToken }}
+          CHAT_ID: ${{ github.event.client_payload.chatid }}
         run: |
-          ffmpeg -y \
-            -video_size 500x650 \
-            -framerate 30 \
-            -f x11grab \
-            -i :99.0+0,0 \
-            -t 8 \
-            -pix_fmt yuv420p \
-            spin.mp4
-
-      # -----------------------------
-      # SEND TO TELEGRAM
-      # -----------------------------
-      - name: Send to Telegram
-        run: |
-          curl -s -X POST \
-            "https://api.telegram.org/bot${{ github.event.client_payload.botToken }}/sendVideo" \
-            -F chat_id="${{ github.event.client_payload.chatId }}" \
-            -F video=@spin.mp4 \
-            -F caption="🎡 Spin Result"
+          xvfb-run --server-args="-screen 0 1080x1080x24" node render.js
+          
