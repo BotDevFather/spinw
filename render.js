@@ -43,7 +43,7 @@ if (!HTML_URL || !BOT_TOKEN || !CHAT_ID) {
     "-framerate", "60",
     "-f", "x11grab",
     "-i", ":99.0",
-    "-vf", "crop=1080:1060:0:20",
+    "-vf", "crop=1080:1000:0:80",
     "-c:v", "libx264",
     "-preset", "veryfast",
     "-pix_fmt", "yuv420p",
