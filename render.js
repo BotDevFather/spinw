@@ -18,7 +18,8 @@ if (!HTML_URL || !BOT_TOKEN || !CHAT_ID) {
     args: [
       "--window-size=1080,1080",
       "--disable-dev-shm-usage",
-      "--no-sandbox"
+      "--no-sandbox",
+      "--kiosk"
     ]
   });
 
