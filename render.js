@@ -16,11 +16,14 @@ if (!HTML_URL || !BOT_TOKEN || !CHAT_ID) {
   const browser = await chromium.launch({
     headless: false,
     args: [
-      "--window-size=1080,1080",
-      "--disable-dev-shm-usage",
-      "--no-sandbox",
-      "--kiosk"
-    ]
+    "--kiosk",                  // 🔥 full screen, no UI
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-infobars",
+    "--disable-extensions",
+    "--window-position=0,0",
+    "--window-size=1080,1080"
+  ]
   });
 
   const page = await browser.newPage({
